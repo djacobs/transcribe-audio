@@ -1,0 +1,29 @@
+#!/bin/bash
+set -e
+
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+if [ $# -eq 0 ]; then
+    echo "Usage: transcribe <audio-file-path> [output-file]"
+    echo ""
+    echo "Transcribe an audio file using macOS native speech recognition."
+    echo "Outputs transcript to stdout or to a file if specified."
+    exit 1
+fi
+
+AUDIO_FILE="$1"
+OUTPUT_FILE="${2:-}"
+
+# Verify file exists
+if [ ! -f "$AUDIO_FILE" ]; then
+    echo "Error: File not found: $AUDIO_FILE" >&2
+    exit 1
+fi
+
+# Run transcription
+if [ -n "$OUTPUT_FILE" ]; then
+    swift "$SCRIPT_DIR/transcribe.swift" "$AUDIO_FILE" > "$OUTPUT_FILE"
+    echo "Transcript saved to: $OUTPUT_FILE" >&2
+else
+    swift "$SCRIPT_DIR/transcribe.swift" "$AUDIO_FILE"
+fi
