@@ -1,6 +1,7 @@
 # transcribe-audio
 
-Transcribe audio files using macOS native speech recognition (SFSpeechRecognizer).
+Transcribe audio files using macOS native speech recognition (`SpeechAnalyzer` on macOS 26+,
+`SFSpeechRecognizer` below).
 
 ## When to use
 
@@ -13,20 +14,36 @@ The skill uses Apple's built-in speech recognition engine, which works offline a
 
 ## How it works
 
-The skill uses macOS native `SFSpeechRecognizer` framework through a Swift script. It:
+On **macOS 26 and later** the skill uses Apple's `SpeechAnalyzer` / `SpeechTranscriber`. It:
 - Reads audio files directly without requiring format conversion
-- Streams recognition results for long audio files
-- Returns full transcript as plain text
-- Times out after 15 minutes of processing
-- Provides error messages via stderr
+- Runs fully on-device
+- Transcribes at roughly **40–55x realtime** (a 174-minute recording took 190 seconds)
+- Handles multi-hour files **in a single pass**, peaking around 200 MB of memory
+- Carries **per-phrase timestamps**, so it can emit WebVTT or SubRip
+- Reports progress to stderr as it goes
+
+On **macOS 25 and earlier** it falls back to `SFSpeechRecognizer`, which returns plain text only
+(`--vtt` and `--srt` are rejected with an error) and keeps the original 15-minute timeout.
+
+### Why the fallback exists
+
+`SFSpeechRecognizer`'s file-based recognition (`SFSpeechURLRecognitionRequest`) **does not work on
+macOS 26**. Measured on 26.6.2: the recognizer reports `isAvailable = true`,
+`supportsOnDeviceRecognition = true`, and authorization succeeds — then the recognition task never
+fires a callback. A 60-second clip produced zero output and zero partial results after 120 seconds at
+3% CPU, with and without `requiresOnDeviceRecognition = true`, for both MP3 and 16 kHz mono WAV
+input. It is not slow; it never starts. That silent stall is the reason for the rewrite.
 
 ## Usage
 
 ### Command line
 
 ```bash
-transcribe <audio-file-path>                    # Output to stdout
-transcribe <audio-file-path> output.txt         # Save to file
+transcribe <audio-file-path>                       # plain text to stdout
+transcribe <audio-file-path> output.txt            # plain text to a file
+transcribe <audio-file-path> out.vtt --vtt         # WebVTT with timestamps
+transcribe <audio-file-path> out.srt --srt         # SubRip with timestamps
+transcribe <audio-file-path> --locale en-GB        # another locale
 ```
 
 ### From Claude Code
@@ -58,10 +75,15 @@ The script accepts any audio format that macOS and AVFoundation can read:
 ## Limitations
 
 - **Accuracy depends on audio quality.** Clear audio with minimal background noise transcribes best.
-- **Language:** Currently set to English (US). Modify the locale in `transcribe.swift` line 15 to support other languages (e.g., `es-ES` for Spanish).
-- **Timeout:** Processing stops after 15 minutes. For longer files, split them first or extend the timeout.
+- **Language:** defaults to English (US). Pass `--locale` for another (e.g. `--locale es-ES`).
+  `SpeechTranscriber.supportedLocales` lists what the system can do; `installedLocales` lists what is
+  already downloaded.
+- **Timeout:** only applies to the pre-macOS-26 fallback path, which stops after 15 minutes. The
+  `SpeechAnalyzer` path has no timeout and does not need one.
+- **Timestamps:** `--vtt` and `--srt` require macOS 26 or later.
 - **Authorization:** First run may prompt for microphone/speech recognition permissions (required by macOS security model).
-- **Performance:** Transcription speed depends on audio length and system resources. As a baseline, 10 minutes of audio takes 2–5 minutes to transcribe.
+- **Performance:** on macOS 26+, roughly 40–55x realtime — 10 minutes of audio in 10–15 seconds,
+  and a 174-minute recording in about 190 seconds. The pre-26 fallback is far slower.
 
 ## Examples
 
@@ -117,10 +139,13 @@ ls -lh /path/to/audio.mp3
 
 ### "Transcription timed out"
 
-The audio file exceeded 15 minutes of processing. Large files may require extra time. Try:
-1. Split the audio into shorter segments
-2. Extend the timeout in `transcribe.swift` (change `900` to a larger value)
-3. Reduce audio quality/sample rate first with ffmpeg
+Only the pre-macOS-26 fallback can time out. If you see this on macOS 26 or later, the build is not
+taking the `SpeechAnalyzer` path — check `swift --version` and `sw_vers -productVersion`.
+
+### Nothing happens at all, at ~3% CPU
+
+That is the `SFSpeechRecognizer` stall described under "Why the fallback exists". It cannot be waited
+out: the task never fires a callback. On macOS 26+ this path should not be reached.
 
 ### Output is empty or partial
 
@@ -132,13 +157,13 @@ This usually means the audio quality is too poor or the format is unsupported. T
 ## Files
 
 - **transcribe** — Bash wrapper script (the entry point)
-- **transcribe.swift** — Swift implementation using SFSpeechRecognizer
+- **transcribe.swift** — Swift implementation (`SpeechAnalyzer`, with an `SFSpeechRecognizer` fallback)
 - **SKILL.md** — This file
 
 ## Future improvements
 
 - Support for batch processing (transcribe multiple files)
 - Language auto-detection
-- Confidence scores and word-level timestamps
+- Confidence scores and **word**-level timestamps (phrase-level shipped)
 - Integration with Claude for automatic post-processing (grammar, punctuation)
-- Progress reporting for long files
+- Speaker diarization
