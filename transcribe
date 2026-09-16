@@ -4,26 +4,35 @@ set -e
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 if [ $# -eq 0 ]; then
-    echo "Usage: transcribe <audio-file-path> [output-file]"
-    echo ""
-    echo "Transcribe an audio file using macOS native speech recognition."
-    echo "Outputs transcript to stdout or to a file if specified."
+    cat <<'USAGE'
+Usage: transcribe <audio-file-path> [output-file] [--vtt|--srt|--text] [--locale en-US]
+
+Transcribe an audio file using macOS native speech recognition.
+Outputs to stdout, or to output-file if a second path is given.
+
+  --text   plain transcript (default)
+  --vtt    WebVTT with timestamps   (macOS 26+)
+  --srt    SubRip with timestamps   (macOS 26+)
+USAGE
     exit 1
 fi
 
-AUDIO_FILE="$1"
-OUTPUT_FILE="${2:-}"
+AUDIO_FILE="$1"; shift
 
-# Verify file exists
 if [ ! -f "$AUDIO_FILE" ]; then
     echo "Error: File not found: $AUDIO_FILE" >&2
     exit 1
 fi
 
-# Run transcription
+# An optional second positional argument is the output file.
+OUTPUT_FILE=""
+if [ $# -gt 0 ] && [[ "$1" != --* ]]; then
+    OUTPUT_FILE="$1"; shift
+fi
+
 if [ -n "$OUTPUT_FILE" ]; then
-    swift "$SCRIPT_DIR/transcribe.swift" "$AUDIO_FILE" > "$OUTPUT_FILE"
+    swift "$SCRIPT_DIR/transcribe.swift" "$AUDIO_FILE" "$@" > "$OUTPUT_FILE"
     echo "Transcript saved to: $OUTPUT_FILE" >&2
 else
-    swift "$SCRIPT_DIR/transcribe.swift" "$AUDIO_FILE"
+    swift "$SCRIPT_DIR/transcribe.swift" "$AUDIO_FILE" "$@"
 fi

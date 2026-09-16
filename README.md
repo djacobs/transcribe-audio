@@ -19,9 +19,11 @@ cd ~/Documents/GitHub/transcribe-audio
 
 ✓ Works offline (no API keys or internet required)  
 ✓ Supports MP3, WAV, MOV, M4A, and most audio formats  
-✓ Fast: transcribes 10 minutes of audio in 2–5 minutes  
+✓ **Fast: ~40–55x realtime** — a 174-minute recording transcribes in about 3 minutes  
+✓ **Timestamped output** — `--vtt` and `--srt`, not just plain text  
+✓ **Handles multi-hour files in one pass**, with a ~200 MB memory ceiling  
 ✓ Simple: single file, no dependencies beyond macOS built-ins  
-✓ Reliable: uses Apple's official SFSpeechRecognizer framework  
+✓ Uses Apple's `SpeechAnalyzer` on macOS 26+, falling back to `SFSpeechRecognizer` below  
 
 ## Examples
 
@@ -33,6 +35,12 @@ Transcribe to stdout:
 Save to file:
 ```bash
 ./transcribe demo.mp3 transcript.txt
+```
+
+Timestamped subtitles:
+```bash
+./transcribe demo.mp3 demo.vtt --vtt
+./transcribe demo.mp3 demo.srt --srt
 ```
 
 Extract audio from video first:
